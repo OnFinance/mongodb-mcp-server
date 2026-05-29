@@ -47,6 +47,7 @@ export class MCPHttpServer<
     protected readonly userConfig: TUserConfig;
     private readonly metrics: Metrics<DefaultMetrics>;
     private readonly pendingInitializations = new Map<string, Promise<void>>();
+    private readonly throttleWindows = new Map<string, { windowStartMs: number; count: number }>();
 
     private createServerForRequest: (createParams: {
         request: TransportRequestContext;
@@ -316,11 +317,55 @@ export class MCPHttpServer<
 
             next();
         });
+        this.app.use(this.withAuthAndThrottle.bind(this));
     }
 
     // eslint-disable-next-line @typescript-eslint/require-await
     protected override async setupRoutes(): Promise<void> {
         this.setupMiddlewares();
+        this.app.get("/healthz", (_req, res) => {
+            res.json({ ok: true, service: "mongodb-mcp-server" });
+        });
+        this.app.get(
+            [
+                "/.well-known/oauth-protected-resource",
+                "/.well-known/oauth-protected-resource/mcp",
+                "/mcp/.well-known/oauth-protected-resource",
+            ],
+            (req, res) => {
+                const resource = `${this.publicBaseUrl(req)}/mcp`;
+                res.json({
+                    resource,
+                    authorization_servers: this.userConfig.oidcIssuer ? [this.userConfig.oidcIssuer] : [],
+                    bearer_methods_supported: ["header"],
+                    scopes_supported: ["openid", "email", "profile", "groups"],
+                });
+            }
+        );
+        this.app.get(
+            [
+                "/.well-known/oauth-authorization-server",
+                "/.well-known/oauth-authorization-server/mcp",
+                "/mcp/.well-known/oauth-authorization-server",
+                "/.well-known/openid-configuration",
+                "/.well-known/openid-configuration/mcp",
+                "/mcp/.well-known/openid-configuration",
+            ],
+            (_req, res) => {
+                const issuer = this.userConfig.oidcIssuer?.replace(/\/$/, "") ?? "";
+                res.json({
+                    issuer,
+                    authorization_endpoint: `${issuer}/auth`,
+                    token_endpoint: `${issuer}/token`,
+                    jwks_uri: `${issuer}/keys`,
+                    userinfo_endpoint: `${issuer}/userinfo`,
+                    response_types_supported: ["code"],
+                    grant_types_supported: ["authorization_code", "refresh_token"],
+                    token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
+                    scopes_supported: ["openid", "email", "profile", "groups", "offline_access"],
+                });
+            }
+        );
         const handleSessionRequest = async (req: express.Request, res: express.Response): Promise<void> => {
             const sessionId = req.headers["mcp-session-id"];
             if (!sessionId) {
@@ -409,6 +454,161 @@ export class MCPHttpServer<
             })
         );
         this.app.delete("/mcp", this.withErrorHandling(handleSessionRequest));
+    }
+
+    private publicBaseUrl(req: express.Request): string {
+        if (this.userConfig.publicBaseUrl) {
+            return this.userConfig.publicBaseUrl.replace(/\/$/, "");
+        }
+        return `${req.protocol}://${req.get("host")}`;
+    }
+
+    private isPublicPath(path: string): boolean {
+        return (
+            path === "/healthz" ||
+            path === "/.well-known/oauth-protected-resource" ||
+            path === "/.well-known/oauth-protected-resource/mcp" ||
+            path === "/mcp/.well-known/oauth-protected-resource" ||
+            path === "/.well-known/oauth-authorization-server" ||
+            path === "/.well-known/oauth-authorization-server/mcp" ||
+            path === "/mcp/.well-known/oauth-authorization-server" ||
+            path === "/.well-known/openid-configuration" ||
+            path === "/.well-known/openid-configuration/mcp" ||
+            path === "/mcp/.well-known/openid-configuration"
+        );
+    }
+
+    private async withAuthAndThrottle(
+        req: express.Request,
+        res: express.Response,
+        next: express.NextFunction
+    ): Promise<void> {
+        if (this.isPublicPath(req.path)) {
+            next();
+            return;
+        }
+
+        if (this.userConfig.authRequired) {
+            const token = this.extractBearerToken(req);
+            if (!token) {
+                this.unauthorized(res, "missing bearer token");
+                return;
+            }
+            try {
+                res.locals.authClaims = await this.fetchUserinfo(token);
+                this.authorizeClaims(res.locals.authClaims as Record<string, unknown>);
+            } catch (error) {
+                this.unauthorized(
+                    res,
+                    `invalid bearer token: ${error instanceof Error ? error.message : String(error)}`
+                );
+                return;
+            }
+        }
+
+        if (!this.checkThrottle(req, res)) {
+            return;
+        }
+
+        next();
+    }
+
+    private extractBearerToken(req: express.Request): string | undefined {
+        const authorization = req.header("authorization") ?? "";
+        if (!authorization.toLowerCase().startsWith("bearer ")) {
+            return undefined;
+        }
+        return authorization.slice("bearer ".length).trim();
+    }
+
+    private async fetchUserinfo(token: string): Promise<Record<string, unknown>> {
+        if (!this.userConfig.oidcIssuer) {
+            throw new Error("OIDC issuer is not configured");
+        }
+        const issuer = this.userConfig.oidcIssuer.replace(/\/$/, "");
+        const response = await fetch(`${issuer}/userinfo`, {
+            headers: { authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+            throw new Error(`userinfo returned ${response.status}`);
+        }
+        const claims = (await response.json()) as Record<string, unknown>;
+        if (!claims.sub) {
+            throw new Error("userinfo response did not include subject");
+        }
+        return claims;
+    }
+
+    private authorizeClaims(claims: Record<string, unknown>): void {
+        if (this.userConfig.authAllowedEmailDomains.length) {
+            const email = (this.claimToString(claims.email) ?? "").toLowerCase();
+            const domain = email.includes("@") ? email.split("@").pop() : "";
+            const allowedDomains = this.userConfig.authAllowedEmailDomains.map((item) => item.toLowerCase());
+            if (!domain || !allowedDomains.includes(domain)) {
+                throw new Error("email domain is not allowed");
+            }
+        }
+
+        if (this.userConfig.authAllowedGroups.length) {
+            const groups = Array.isArray(claims.groups)
+                ? claims.groups
+                      .map((group) => this.claimToString(group)?.toLowerCase())
+                      .filter((group): group is string => !!group)
+                : [];
+            const allowedGroups = this.userConfig.authAllowedGroups.map((group) => group.toLowerCase());
+            if (!groups.some((group) => allowedGroups.includes(group))) {
+                throw new Error("required group is not present");
+            }
+        }
+    }
+
+    private claimToString(value: unknown): string | undefined {
+        if (typeof value === "string") {
+            return value;
+        }
+        if (typeof value === "number" || typeof value === "boolean") {
+            return String(value);
+        }
+        return undefined;
+    }
+
+    private unauthorized(res: express.Response, detail: string): void {
+        const headers: Record<string, string> = {};
+        if (this.userConfig.oidcIssuer) {
+            headers["WWW-Authenticate"] =
+                'Bearer error="invalid_token", resource_metadata="/.well-known/oauth-protected-resource"';
+        }
+        res.status(401).set(headers).json({ error: detail });
+    }
+
+    private checkThrottle(req: express.Request, res: express.Response): boolean {
+        if (this.userConfig.requestThrottlePerMinute <= 0) {
+            return true;
+        }
+
+        const now = Date.now();
+        const windowMs = 60_000;
+        const claims = res.locals.authClaims as Record<string, unknown> | undefined;
+        const email = this.claimToString(claims?.email)?.toLowerCase();
+        const subject = this.claimToString(claims?.sub);
+        const key = email !== undefined ? `email:${email}` : subject !== undefined ? `sub:${subject}` : `ip:${req.ip}`;
+        const limit = this.userConfig.requestThrottlePerMinute + this.userConfig.requestThrottleBurst;
+        const window = this.throttleWindows.get(key);
+        if (!window || now - window.windowStartMs >= windowMs) {
+            this.throttleWindows.set(key, { windowStartMs: now, count: 1 });
+            return true;
+        }
+
+        window.count += 1;
+        if (window.count <= limit) {
+            return true;
+        }
+
+        const retryAfterSeconds = Math.max(1, Math.ceil((windowMs - (now - window.windowStartMs)) / 1000));
+        res.status(429)
+            .set("Retry-After", String(retryAfterSeconds))
+            .json({ error: "request throttled", retry_after_seconds: retryAfterSeconds });
+        return false;
     }
 
     private withErrorHandling(

@@ -6,6 +6,7 @@ import type { Document } from "mongodb";
 import { AggregateArgs } from "../read/aggregate.js";
 import { FindArgs } from "../read/find.js";
 import { CountArgs } from "../read/count.js";
+import { withVisibleFilter, withVisiblePipeline } from "../../../helpers/visibleOnly.js";
 
 const ExplainOutputSchema = {
     explainResult: z.record(z.string(), z.unknown()),
@@ -73,11 +74,12 @@ export class ExplainTool extends MongoDBToolBase {
         switch (method.name) {
             case "aggregate": {
                 const { pipeline } = method.arguments;
+                const effectivePipeline = withVisiblePipeline(this.config, pipeline);
                 result = await provider
                     .aggregate(
                         database,
                         collection,
-                        pipeline,
+                        effectivePipeline,
                         {
                             ...this.getOperationOptions(signal),
                         },
@@ -90,8 +92,9 @@ export class ExplainTool extends MongoDBToolBase {
             }
             case "find": {
                 const { filter, ...rest } = method.arguments;
+                const effectiveFilter = withVisibleFilter(this.config, filter as Document);
                 result = await provider
-                    .find(database, collection, filter as Document, {
+                    .find(database, collection, effectiveFilter, {
                         ...rest,
                         ...this.getOperationOptions(signal),
                     })
@@ -100,12 +103,13 @@ export class ExplainTool extends MongoDBToolBase {
             }
             case "count": {
                 const { query } = method.arguments;
+                const effectiveQuery = withVisibleFilter(this.config, query as Document);
                 result = await provider.runCommandWithCheck(
                     database,
                     {
                         explain: {
                             count: collection,
-                            query,
+                            query: effectiveQuery,
                         },
                         verbosity,
                     },

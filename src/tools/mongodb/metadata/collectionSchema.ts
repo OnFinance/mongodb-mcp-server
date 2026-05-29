@@ -6,6 +6,7 @@ import z from "zod";
 import { ONE_MB } from "../../../helpers/constants.js";
 import { collectCursorUntilMaxBytesLimit } from "../../../helpers/collectCursorUntilMaxBytes.js";
 import { isObjectEmpty } from "../../../helpers/isObjectEmpty.js";
+import { withVisiblePipeline } from "../../../helpers/visibleOnly.js";
 
 const MAXIMUM_SAMPLE_SIZE_HARD_LIMIT = 50_000;
 
@@ -39,14 +40,12 @@ export class CollectionSchemaTool extends MongoDBToolBase {
         { signal }: ToolExecutionContext
     ): Promise<ToolResult<typeof this.outputSchema>> {
         const provider = await this.ensureConnected();
-        const cursor = provider.aggregate(
-            database,
-            collection,
-            [{ $sample: { size: Math.min(sampleSize, MAXIMUM_SAMPLE_SIZE_HARD_LIMIT) } }],
-            {
-                ...this.getOperationOptions(signal),
-            }
-        );
+        const pipeline = withVisiblePipeline(this.config, [
+            { $sample: { size: Math.min(sampleSize, MAXIMUM_SAMPLE_SIZE_HARD_LIMIT) } },
+        ]);
+        const cursor = provider.aggregate(database, collection, pipeline, {
+            ...this.getOperationOptions(signal),
+        });
         const { documents } = await collectCursorUntilMaxBytesLimit({
             cursor,
             configuredMaxBytesPerQuery: this.config.maxBytesPerQuery,

@@ -141,6 +141,62 @@ const ServerConfigSchema = z.object({
             "Header that the HTTP server will validate when making requests (only used when transport is 'http')."
         )
         .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    authRequired: z
+        .preprocess(parseBoolean, z.boolean())
+        .default(false)
+        .describe(
+            "When set to true, hosted HTTP requests must include a bearer token accepted by the configured OIDC issuer."
+        )
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    oidcIssuer: z
+        .string()
+        .optional()
+        .describe("OIDC issuer used for hosted HTTP bearer-token validation.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    oidcAudience: z
+        .string()
+        .optional()
+        .describe("OIDC audience/client identifier documented in MCP resource metadata.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    publicBaseUrl: z
+        .string()
+        .optional()
+        .describe("Public base URL used in OAuth protected-resource metadata.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    authAllowedEmailDomains: z
+        .preprocess((val: string | string[] | undefined) => commaSeparatedToArray(val), z.array(z.string()))
+        .default([])
+        .describe("Allowed email domains for hosted HTTP bearer-token users.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    authAllowedGroups: z
+        .preprocess((val: string | string[] | undefined) => commaSeparatedToArray(val), z.array(z.string()))
+        .default([])
+        .describe("Allowed OIDC groups for hosted HTTP bearer-token users.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    requestThrottlePerMinute: z.coerce
+        .number()
+        .int()
+        .min(0, "requestThrottlePerMinute must be non-negative")
+        .default(0)
+        .describe("Maximum hosted HTTP requests per identity/IP per minute. Set 0 to disable.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    requestThrottleBurst: z.coerce
+        .number()
+        .int()
+        .min(0, "requestThrottleBurst must be non-negative")
+        .default(0)
+        .describe("Additional fixed-window burst allowance for hosted HTTP requests.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    visibleOnly: z
+        .preprocess(parseBoolean, z.boolean())
+        .default(false)
+        .describe("When set to true, MongoDB read operations are constrained to documents where visibleField is true.")
+        .register(configRegistry, { overrideBehavior: oneWayOverride(true) }),
+    visibleField: z
+        .string()
+        .default("visible")
+        .describe("Document field used by visibleOnly enforcement.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
     httpBodyLimit: z.coerce
         .number()
         .int()

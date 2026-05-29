@@ -1131,6 +1131,16 @@ export const UserConfigSchema: z.ZodObject<{
     httpPort: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
     httpHost: z.ZodDefault<z.ZodString>;
     httpHeaders: z.ZodDefault<z.ZodObject<{}, z.core.$loose>>;
+    authRequired: z.ZodDefault<z.ZodPreprocess<z.ZodBoolean>>;
+    oidcIssuer: z.ZodOptional<z.ZodString>;
+    oidcAudience: z.ZodOptional<z.ZodString>;
+    publicBaseUrl: z.ZodOptional<z.ZodString>;
+    authAllowedEmailDomains: z.ZodDefault<z.ZodPreprocess<z.ZodArray<z.ZodString>>>;
+    authAllowedGroups: z.ZodDefault<z.ZodPreprocess<z.ZodArray<z.ZodString>>>;
+    requestThrottlePerMinute: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    requestThrottleBurst: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    visibleOnly: z.ZodDefault<z.ZodPreprocess<z.ZodBoolean>>;
+    visibleField: z.ZodDefault<z.ZodString>;
     httpBodyLimit: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
     idleTimeoutMs: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
     notificationTimeoutMs: z.ZodDefault<z.ZodCoercedNumber<unknown>>;

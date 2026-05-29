@@ -3,6 +3,7 @@ import { CollOperationArgs, MongoDBToolBase } from "../mongodbTool.js";
 import type { ToolArgs, OperationType, ToolExecutionContext } from "../../tool.js";
 import { checkIndexUsage } from "../../../helpers/indexCheck.js";
 import { zEJSON } from "../../args.js";
+import { withVisibleFilter } from "../../../helpers/visibleOnly.js";
 
 export const CountArgs = {
     query: zEJSON()
@@ -28,6 +29,7 @@ export class CountTool extends MongoDBToolBase {
         { signal }: ToolExecutionContext
     ): Promise<CallToolResult> {
         const provider = await this.ensureConnected();
+        const effectiveQuery = withVisibleFilter(this.config, query);
 
         // Check if count operation uses an index if enabled
         if (this.config.indexCheck) {
@@ -41,7 +43,7 @@ export class CountTool extends MongoDBToolBase {
                         {
                             explain: {
                                 count: collection,
-                                query,
+                                query: effectiveQuery,
                             },
                             verbosity: "queryPlanner",
                             ...(this.config.maxTimeMS !== undefined && { maxTimeMS: this.config.maxTimeMS }),
@@ -55,14 +57,14 @@ export class CountTool extends MongoDBToolBase {
             });
         }
 
-        const count = await provider.countDocuments(database, collection, query, {
+        const count = await provider.countDocuments(database, collection, effectiveQuery, {
             ...this.getOperationOptions(signal),
         });
 
         return {
             content: [
                 {
-                    text: `Found ${count} documents in the collection "${collection}"${query ? " that matched the query" : ""}.`,
+                    text: `Found ${count} visible documents in the collection "${collection}"${query ? " that matched the query" : ""}.`,
                     type: "text",
                 },
             ],
