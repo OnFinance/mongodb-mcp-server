@@ -64,7 +64,7 @@ export class CountTool extends MongoDBToolBase {
         return {
             content: [
                 {
-                    text: `Found ${count} visible documents in the collection "${collection}"${query ? " that matched the query" : ""}.`,
+                    text: `Found ${count} ${this.config.visibleOnly ? "visible " : ""}documents in the collection "${collection}"${query ? " that matched the query" : ""}.`,
                     type: "text",
                 },
             ],
