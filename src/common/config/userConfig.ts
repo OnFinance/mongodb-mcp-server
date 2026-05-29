@@ -158,6 +158,31 @@ const ServerConfigSchema = z.object({
         .optional()
         .describe("OIDC audience/client identifier documented in MCP resource metadata.")
         .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    oauthRegistrationEnabled: z
+        .preprocess(parseBoolean, z.boolean())
+        .default(false)
+        .describe("When set to true, exposes hosted OAuth dynamic client registration for public MCP clients.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    oauthClientId: z
+        .string()
+        .optional()
+        .describe("Static public OAuth client ID returned by hosted OAuth dynamic client registration.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    oauthClientName: z
+        .string()
+        .default("MongoDB MCP Codex Client")
+        .describe("OAuth client name returned by hosted OAuth dynamic client registration.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    oauthRedirectUris: z
+        .preprocess((val: string | string[] | undefined) => commaSeparatedToArray(val), z.array(z.string()))
+        .default([])
+        .describe("Allowed redirect URIs for hosted OAuth dynamic client registration.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
+    oauthTokenEndpointAuthMethods: z
+        .preprocess((val: string | string[] | undefined) => commaSeparatedToArray(val), z.array(z.string()))
+        .default(["client_secret_basic", "client_secret_post"])
+        .describe("OAuth token endpoint auth methods advertised in hosted OAuth metadata.")
+        .register(configRegistry, { overrideBehavior: "not-allowed" }),
     publicBaseUrl: z
         .string()
         .optional()

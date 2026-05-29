@@ -12,6 +12,7 @@ import {
     type LoggerBase,
 } from "../lib.js";
 import { ConfigOverrideError } from "../common/config/configOverrides.js";
+import { buildAuthorizationServerMetadata, buildClientRegistrationResponse } from "../helpers/hostedOAuth.js";
 import type { CustomizableServerOptions, CustomizableSessionOptions, TransportRequestContext } from "./base.js";
 import { ExpressBasedHttpServer } from "./expressBasedHttpServer.js";
 import {
@@ -352,20 +353,30 @@ export class MCPHttpServer<
                 "/mcp/.well-known/openid-configuration",
             ],
             (_req, res) => {
-                const issuer = this.userConfig.oidcIssuer?.replace(/\/$/, "") ?? "";
-                res.json({
-                    issuer,
-                    authorization_endpoint: `${issuer}/auth`,
-                    token_endpoint: `${issuer}/token`,
-                    jwks_uri: `${issuer}/keys`,
-                    userinfo_endpoint: `${issuer}/userinfo`,
-                    response_types_supported: ["code"],
-                    grant_types_supported: ["authorization_code", "refresh_token"],
-                    token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
-                    scopes_supported: ["openid", "email", "profile", "groups", "offline_access"],
-                });
+                res.json(
+                    buildAuthorizationServerMetadata({
+                        issuer: this.userConfig.oidcIssuer,
+                        publicBaseUrl: this.publicBaseUrl(_req),
+                        registrationEnabled: this.userConfig.oauthRegistrationEnabled,
+                        tokenEndpointAuthMethods: this.userConfig.oauthTokenEndpointAuthMethods,
+                    })
+                );
             }
         );
+        this.app.post("/oauth/register", (req, res) => {
+            if (!this.userConfig.oauthRegistrationEnabled) {
+                res.status(404).json({ error: "not_found" });
+                return;
+            }
+
+            const { status, response } = buildClientRegistrationResponse(req.body, {
+                clientId: this.userConfig.oauthClientId,
+                clientName: this.userConfig.oauthClientName,
+                redirectUris: this.userConfig.oauthRedirectUris,
+                scopes: ["openid", "email", "profile", "groups", "offline_access"],
+            });
+            res.status(status).json(response);
+        });
         const handleSessionRequest = async (req: express.Request, res: express.Response): Promise<void> => {
             const sessionId = req.headers["mcp-session-id"];
             if (!sessionId) {
@@ -474,7 +485,8 @@ export class MCPHttpServer<
             path === "/mcp/.well-known/oauth-authorization-server" ||
             path === "/.well-known/openid-configuration" ||
             path === "/.well-known/openid-configuration/mcp" ||
-            path === "/mcp/.well-known/openid-configuration"
+            path === "/mcp/.well-known/openid-configuration" ||
+            path === "/oauth/register"
         );
     }
 

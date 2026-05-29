@@ -1215,6 +1215,11 @@ export const UserConfigSchema: z.ZodObject<{
     authRequired: z.ZodDefault<z.ZodPreprocess<z.ZodBoolean>>;
     oidcIssuer: z.ZodOptional<z.ZodString>;
     oidcAudience: z.ZodOptional<z.ZodString>;
+    oauthRegistrationEnabled: z.ZodDefault<z.ZodPreprocess<z.ZodBoolean>>;
+    oauthClientId: z.ZodOptional<z.ZodString>;
+    oauthClientName: z.ZodDefault<z.ZodString>;
+    oauthRedirectUris: z.ZodDefault<z.ZodPreprocess<z.ZodArray<z.ZodString>>>;
+    oauthTokenEndpointAuthMethods: z.ZodDefault<z.ZodPreprocess<z.ZodArray<z.ZodString>>>;
     publicBaseUrl: z.ZodOptional<z.ZodString>;
     authAllowedEmailDomains: z.ZodDefault<z.ZodPreprocess<z.ZodArray<z.ZodString>>>;
     authAllowedGroups: z.ZodDefault<z.ZodPreprocess<z.ZodArray<z.ZodString>>>;
