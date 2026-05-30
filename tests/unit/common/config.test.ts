@@ -25,6 +25,8 @@ const expectedDefaults = {
     disabledTools: [],
     telemetry: "enabled",
     readOnly: false,
+    visibleOnly: false,
+    visibleField: "visible",
     indexCheck: false,
     deepInspect: true,
     confirmationRequiredTools: [
@@ -45,6 +47,15 @@ const expectedDefaults = {
     idleTimeoutMs: 10 * 60 * 1000, // 10 minutes
     notificationTimeoutMs: 9 * 60 * 1000, // 9 minutes
     httpHeaders: {},
+    authRequired: false,
+    authAllowedEmailDomains: [],
+    authAllowedGroups: [],
+    oauthRegistrationEnabled: false,
+    oauthClientName: "MongoDB MCP Codex Client",
+    oauthRedirectUris: [],
+    oauthTokenEndpointAuthMethods: ["client_secret_basic", "client_secret_post"],
+    requestThrottlePerMinute: 0,
+    requestThrottleBurst: 0,
     httpBodyLimit: TRANSPORT_PAYLOAD_LIMITS.http,
     maxDocumentsPerQuery: 100,
     maxBytesPerQuery: 16 * 1024 * 1024, // ~16 mb

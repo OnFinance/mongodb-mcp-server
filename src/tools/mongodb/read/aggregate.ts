@@ -17,6 +17,7 @@ import {
     assertVectorSearchFilterFieldsAreIndexed,
     type SearchIndex,
 } from "../../../helpers/assertVectorSearchFilterFieldsAreIndexed.js";
+import { withVisiblePipeline } from "../../../helpers/visibleOnly.js";
 
 export const pipelineDescriptionWithVectorSearch = `\
 An array of aggregation stages to execute.
@@ -68,7 +69,8 @@ Note to LLM: If the entire aggregation result is required, use the "export" tool
         let aggregationCursor: AggregationCursor | undefined = undefined;
         try {
             const provider = await this.ensureConnected();
-            await this.assertOnlyUsesPermittedStages(pipeline);
+            const effectivePipeline = withVisiblePipeline(this.config, pipeline);
+            await this.assertOnlyUsesPermittedStages(effectivePipeline);
             if (await this.session.isSearchSupported()) {
                 let searchIndexes: SearchIndex[] | undefined;
                 try {
@@ -83,7 +85,7 @@ Note to LLM: If the entire aggregation result is required, use the "export" tool
                 if (searchIndexes !== undefined) {
                     assertVectorSearchFilterFieldsAreIndexed({
                         searchIndexes,
-                        pipeline,
+                        pipeline: effectivePipeline,
                         logger: this.session.logger,
                     });
                 }
@@ -94,7 +96,7 @@ Note to LLM: If the entire aggregation result is required, use the "export" tool
                 const [usesVectorSearchIndex, indexName] = await this.isVectorSearchIndexUsed({
                     database,
                     collection,
-                    pipeline,
+                    pipeline: effectivePipeline,
                 });
                 switch (usesVectorSearchIndex) {
                     case "not-vector-search-query":
@@ -131,16 +133,16 @@ Note to LLM: If the entire aggregation result is required, use the "export" tool
 
             let successMessage: string;
             let documents: unknown[];
-            if (pipeline.some((stage) => this.isWriteStage(stage))) {
+            if (effectivePipeline.some((stage) => this.isWriteStage(stage))) {
                 // This is a write pipeline, so special-case it and don't attempt to apply limits or caps
-                aggregationCursor = provider.aggregate(database, collection, pipeline, {
+                aggregationCursor = provider.aggregate(database, collection, effectivePipeline, {
                     signal,
                 });
 
                 documents = await aggregationCursor.toArray();
                 successMessage = "The aggregation pipeline executed successfully.";
             } else {
-                const cappedResultsPipeline: Document[] = [...pipeline];
+                const cappedResultsPipeline: Document[] = [...effectivePipeline];
                 if (this.config.maxDocumentsPerQuery > 0) {
                     cappedResultsPipeline.push({ $limit: this.config.maxDocumentsPerQuery });
                 }
@@ -153,7 +155,7 @@ Note to LLM: If the entire aggregation result is required, use the "export" tool
                         provider,
                         database,
                         collection,
-                        pipeline,
+                        pipeline: effectivePipeline,
                         abortSignal: signal,
                     }),
                     collectCursorUntilMaxBytesLimit({

@@ -882,7 +882,7 @@ describe("StreamableHttpRunner", () => {
 
                 expect(runner["monitoringServer"]).toBeDefined();
                 expect(runner["monitoringServer"]!.serverAddress).toEqual("http://127.0.0.1:3001");
-                const healthResponse = await fetch("http://localhost:3001/health");
+                const healthResponse = await fetch(`${runner["monitoringServer"]!.serverAddress}/health`);
                 expect(healthResponse.status).toBe(200);
                 const healthData = (await healthResponse.json()) as unknown;
                 expect(healthData).toEqual({ status: "ok" });
@@ -948,7 +948,7 @@ describe("StreamableHttpRunner", () => {
 
                 expect(runner["monitoringServer"]).toBeDefined();
                 expect(runner["monitoringServer"]!.serverAddress).toEqual("http://127.0.0.1:3001");
-                const healthResponse = await fetch("http://localhost:3001/health");
+                const healthResponse = await fetch(`${runner["monitoringServer"]!.serverAddress}/health`);
                 expect(healthResponse.status).toBe(200);
                 const healthData = (await healthResponse.json()) as unknown;
                 expect(healthData).toEqual({ status: "ok" });
@@ -989,7 +989,7 @@ describe("StreamableHttpRunner", () => {
                 runner = new StreamableHttpRunner({ userConfig: config });
                 await runner.start();
 
-                const metricsResponse = await fetch("http://localhost:3001/metrics");
+                const metricsResponse = await fetch(`${runner["monitoringServer"]!.serverAddress}/metrics`);
                 expect(metricsResponse.status).toBe(404);
             });
 
@@ -998,7 +998,7 @@ describe("StreamableHttpRunner", () => {
                 runner = new StreamableHttpRunner({ userConfig: config });
                 await runner.start();
 
-                const metricsResponse = await fetch("http://localhost:3001/metrics");
+                const metricsResponse = await fetch(`${runner["monitoringServer"]!.serverAddress}/metrics`);
                 expect(metricsResponse.status).toBe(200);
                 expect(metricsResponse.headers.get("content-type")).toMatch(/text\/plain/);
             });

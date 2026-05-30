@@ -12,6 +12,7 @@ import { ONE_MB, QUERY_COUNT_MAX_TIME_MS_CAP, CURSOR_LIMITS_TO_LLM_TEXT } from "
 import { zEJSON } from "../../args.js";
 import { LogId } from "../../../common/logging/index.js";
 import { SortDirectionSchema } from "../mongodbSchemas.js";
+import { withVisibleFilter } from "../../../helpers/visibleOnly.js";
 
 export const FindArgs = {
     filter: zEJSON()
@@ -51,6 +52,7 @@ Note to LLM: If the entire query result is required, use the "export" tool inste
         let findCursor: FindCursor<unknown> | undefined = undefined;
         try {
             const provider = await this.ensureConnected();
+            const effectiveFilter = withVisibleFilter(this.config, filter);
 
             // Check if find operation uses an index if enabled
             if (this.config.indexCheck) {
@@ -60,7 +62,7 @@ Note to LLM: If the entire query result is required, use the "export" tool inste
                     operation: "find",
                     explainCallback: async () => {
                         return provider
-                            .find(database, collection, filter, {
+                            .find(database, collection, effectiveFilter, {
                                 projection,
                                 limit,
                                 sort,
@@ -74,7 +76,7 @@ Note to LLM: If the entire query result is required, use the "export" tool inste
 
             const limitOnFindCursor = this.getLimitForFindCursor(limit);
 
-            findCursor = provider.find(database, collection, filter, {
+            findCursor = provider.find(database, collection, effectiveFilter, {
                 projection,
                 limit: limitOnFindCursor.limit,
                 sort,
@@ -84,7 +86,7 @@ Note to LLM: If the entire query result is required, use the "export" tool inste
             const [queryResultsCount, cursorResults] = await Promise.all([
                 operationWithFallback(
                     () =>
-                        provider.countDocuments(database, collection, filter, {
+                        provider.countDocuments(database, collection, effectiveFilter, {
                             // We should be counting documents that the original
                             // query would have yielded which is why we don't
                             // use `limitOnFindCursor` calculated above, and
