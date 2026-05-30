@@ -49,14 +49,14 @@ export function buildClientRegistrationResponse(
         isRecord(body) && Array.isArray(body.redirect_uris)
             ? body.redirect_uris.filter((uri): uri is string => typeof uri === "string")
             : [];
-    const redirectUris = requestedRedirectUris.length ? requestedRedirectUris : config.redirectUris;
+    const redirectUris = getAcceptedRedirectUris(requestedRedirectUris, config.redirectUris);
     const invalidRedirectUris = redirectUris.filter((uri) => !config.redirectUris.includes(uri));
     if (!redirectUris.length || invalidRedirectUris.length) {
         return {
             status: 400,
             response: {
                 error: "invalid_redirect_uri",
-                error_description: "requested redirect_uris must exactly match configured Codex callback URIs",
+                error_description: `requested redirect_uris must match configured callback URIs: ${requestedRedirectUris.join(", ")}`,
             },
         };
     }
@@ -86,4 +86,27 @@ export function buildClientRegistrationResponse(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
+}
+
+function getAcceptedRedirectUris(requestedRedirectUris: string[], configuredRedirectUris: string[]): string[] {
+    if (!requestedRedirectUris.length) {
+        return configuredRedirectUris;
+    }
+
+    const chatGptPlatformRedirectUri = "https://chatgpt.com/connector_platform_oauth_redirect";
+    const supportsChatGptPlatformRedirect = configuredRedirectUris.includes(chatGptPlatformRedirectUri);
+    if (supportsChatGptPlatformRedirect && requestedRedirectUris.every(isChatGptConnectorRedirectUri)) {
+        return [chatGptPlatformRedirectUri];
+    }
+
+    return requestedRedirectUris;
+}
+
+function isChatGptConnectorRedirectUri(uri: string): boolean {
+    try {
+        const url = new URL(uri);
+        return url.protocol === "https:" && url.hostname === "chatgpt.com" && url.pathname.startsWith("/connector/");
+    } catch {
+        return false;
+    }
 }

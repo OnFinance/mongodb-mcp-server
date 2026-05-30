@@ -60,4 +60,26 @@ describe("hosted OAuth helpers", () => {
         expect(result.status).toBe(400);
         expect(result.response).toMatchObject({ error: "invalid_redirect_uri" });
     });
+
+    it("maps ChatGPT connector redirect URIs to the platform redirect URI", () => {
+        const result = buildClientRegistrationResponse(
+            {
+                redirect_uris: ["https://chatgpt.com/connector/oauth/example"],
+                scope: "openid email profile groups offline_access",
+            },
+            {
+                clientId: "mongo-analytics-mcp-chatgpt",
+                clientName: "Mongo Analytics MCP ChatGPT",
+                redirectUris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+                scopes: ["openid", "email", "profile", "groups", "offline_access"],
+            }
+        );
+
+        expect(result.status).toBe(201);
+        expect(result.response).toMatchObject({
+            client_id: "mongo-analytics-mcp-chatgpt",
+            redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+            token_endpoint_auth_method: "none",
+        });
+    });
 });
